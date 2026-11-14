@@ -3,6 +3,9 @@ import streamlit as st
 import requests
 import pandas as pd
 import plotly.express as px
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
 
 # 1. Az alkalmazás alapbeállításai
 st.set_page_config(
@@ -14,6 +17,71 @@ st.set_page_config(
 # 2. API-végpontok
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+
+
+
+# SQLite adatbázis helye
+DB_PATH = Path(__file__).with_name("weather_history.db")
+
+
+def init_database():
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS weather_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                city TEXT NOT NULL,
+                country TEXT,
+                temperature REAL,
+                humidity REAL,
+                wind_speed REAL,
+                searched_at TEXT NOT NULL
+            )
+        """)
+
+
+def save_weather(city, country, current):
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            INSERT INTO weather_history (
+                city,
+                country,
+                temperature,
+                humidity,
+                wind_speed,
+                searched_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            city,
+            country,
+            current["temperature_2m"],
+            current["relative_humidity_2m"],
+            current["wind_speed_10m"],
+            datetime.now(timezone.utc).isoformat(
+                timespec="seconds"
+            )
+        ))
+
+
+
+# Korábbi keresések visszaolvasása
+def load_weather_history():
+    with sqlite3.connect(DB_PATH) as conn:
+        df = pd.read_sql_query("""
+            SELECT
+                city,
+                country,
+                temperature,
+                humidity,
+                wind_speed,
+                searched_at
+            FROM weather_history
+            ORDER BY id DESC
+            LIMIT 20
+        """, conn)
+
+    return df
+
 
 
 # 3. Városkereső függvény
@@ -75,6 +143,8 @@ def fetch_weather(latitude, longitude):
         st.warning("Nem sikerült lekérni az időjárásadatokat.")
         return None
 
+# Adatbázis inicializálása
+init_database()
 
 # 5. A kiválasztott város megőrzése
 if "city" not in st.session_state:
@@ -122,6 +192,10 @@ if location:
 
     if weather:
         current = weather["current"]
+
+        if submitted:
+            save_weather(city_name, country, current)
+            st.success("Az időjárási adatok mentve az adatbázisba!")
 
         st.subheader("Aktuális időjárás")
 
@@ -204,3 +278,34 @@ if location:
             st.warning("Nem érkeztek óránkénti adatok.")
 
         st.caption("Időjárásadatok: Open-Meteo")
+
+
+# 9. Keresési előzmények
+st.divider()
+st.subheader("📚 Keresési előzmények")
+
+history_df = load_weather_history()
+
+if not history_df.empty:
+    history_df["searched_at"] = (
+        pd.to_datetime(history_df["searched_at"], utc=True)
+        .dt.tz_convert("Europe/Budapest")
+        .dt.strftime("%Y-%m-%d %H:%M")
+    )
+
+    history_df = history_df.rename(columns={
+        "city": "Város",
+        "country": "Ország",
+        "temperature": "Hőmérséklet (°C)",
+        "humidity": "Páratartalom (%)",
+        "wind_speed": "Szélsebesség (km/h)",
+        "searched_at": "Lekérdezés ideje"
+    })
+
+    st.dataframe(
+        history_df,
+        hide_index=True,
+        width="stretch"
+    )
+else:
+    st.info("Még nincsenek mentett keresések.")

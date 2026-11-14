@@ -123,7 +123,7 @@ def fetch_weather(latitude, longitude):
         "longitude": longitude,
         "current": "temperature_2m,relative_humidity_2m,wind_speed_10m",
         "hourly": "temperature_2m,relative_humidity_2m",
-        "forecast_hours": 24,
+        "forecast_days": 5,
         "timezone": "auto"
     }
 
@@ -227,7 +227,7 @@ if location:
 
             df["time"] = pd.to_datetime(df["time"])
 
-            st.subheader("24 órás előrejelzés")
+            st.subheader("5 napos előrejelzés")
 
             tab1, tab2 = st.tabs([
                 "🌡️ Hőmérséklet",
@@ -244,7 +244,23 @@ if location:
                         "time": "Időpont",
                         "temperature_2m": "Hőmérséklet (°C)"
                     },
-                    markers=True
+                    markers=False
+                )
+
+                # X-tengely: 4 óránként, éjféltől
+                fig_temp.update_xaxes(
+                    tickmode="linear",
+                    tick0=df["time"].min().normalize(),
+                    dtick=4 * 60 * 60 * 1000,
+                    tickformat="%m.%d %H:%M",
+                    tickangle=-90,
+                    side="bottom",
+                    automargin=True
+                )
+
+                fig_temp.update_layout(
+                    height=500,
+                    margin=dict(b=125)
                 )
 
                 st.plotly_chart(
@@ -262,7 +278,22 @@ if location:
                         "time": "Időpont",
                         "relative_humidity_2m": "Páratartalom (%)"
                     },
-                    markers=True
+                    markers=False
+                )
+
+                fig_humidity.update_xaxes(
+                    tickmode="linear",
+                    tick0=df["time"].min().normalize(),
+                    dtick=4 * 60 * 60 * 1000,
+                    tickformat="%m.%d %H:%M",
+                    tickangle=-90,
+                    side="bottom",
+                    automargin=True
+                )
+
+                fig_humidity.update_layout(
+                    height=500,
+                    margin=dict(b=125)
                 )
 
                 st.plotly_chart(
